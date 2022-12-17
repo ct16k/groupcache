@@ -35,6 +35,7 @@ import (
 	pb "github.com/mailgun/groupcache/v2/groupcachepb"
 	"github.com/mailgun/groupcache/v2/lru"
 	"github.com/mailgun/groupcache/v2/singleflight"
+	"github.com/mailgun/groupcache/v2/timer"
 	"github.com/sirupsen/logrus"
 )
 
@@ -94,8 +95,8 @@ func GetGroup(name string) *Group {
 // completes.
 //
 // The group name must be unique for each getter.
-func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
-	return newGroup(name, cacheBytes, getter, nil)
+func NewGroup(name string, cacheBytes int64, getter Getter, timer timer.Timer) *Group {
+	return newGroup(name, cacheBytes, getter, nil, timer)
 }
 
 // DeregisterGroup removes group from group pool
@@ -106,7 +107,7 @@ func DeregisterGroup(name string) {
 }
 
 // If peers is nil, the peerPicker is called via a sync.Once to initialize it.
-func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker) *Group {
+func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker, timer timer.Timer) *Group {
 	if getter == nil {
 		panic("nil Getter")
 	}
@@ -120,7 +121,10 @@ func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker) *G
 		name:        name,
 		getter:      getter,
 		peers:       peers,
+		timer:       timer,
 		cacheBytes:  cacheBytes,
+		mainCache:   cache{timer: timer},
+		hotCache:    cache{timer: timer},
 		loadGroup:   &singleflight.Group{},
 		setGroup:    &singleflight.Group{},
 		removeGroup: &singleflight.Group{},
@@ -166,6 +170,7 @@ type Group struct {
 	getter     Getter
 	peersOnce  sync.Once
 	peers      PeerPicker
+	timer      timer.Timer
 	cacheBytes int64 // limit for sum of mainCache and hotCache size
 
 	// mainCache is a cache of the keys for which this process
@@ -264,7 +269,7 @@ func (g *Group) Get(ctx context.Context, key string, dest Sink) error {
 	return setSinkView(dest, value)
 }
 
-func (g *Group) Set(ctx context.Context, key string, value []byte, expire time.Time, hotCache bool) error {
+func (g *Group) Set(ctx context.Context, key string, value []byte, expire int64, hotCache bool) error {
 	g.peersOnce.Do(g.initPeers)
 
 	if key == "" {
@@ -487,28 +492,22 @@ func (g *Group) getFromPeer(ctx context.Context, peer ProtoGetter, key string) (
 		return ByteView{}, err
 	}
 
-	var expire time.Time
 	if res.Expire != 0 {
-		expire = time.Unix(res.Expire/int64(time.Second), res.Expire%int64(time.Second))
-		if time.Now().After(expire) {
+		if g.timer.Now() > res.Expire {
 			return ByteView{}, errors.New("peer returned expired value")
 		}
 	}
 
-	value := ByteView{b: res.Value, e: expire}
+	value := ByteView{b: res.Value, e: res.Expire}
 
 	// Always populate the hot cache
 	g.populateCache(key, value, &g.hotCache)
 	return value, nil
 }
 
-func (g *Group) setFromPeer(ctx context.Context, peer ProtoGetter, k string, v []byte, e time.Time) error {
-	var expire int64
-	if !e.IsZero() {
-		expire = e.UnixNano()
-	}
+func (g *Group) setFromPeer(ctx context.Context, peer ProtoGetter, k string, v []byte, e int64) error {
 	req := &pb.SetRequest{
-		Expire: expire,
+		Expire: e,
 		Group:  g.name,
 		Key:    k,
 		Value:  v,
@@ -543,7 +542,7 @@ func (g *Group) lookupCache(key string) (value ByteView, ok bool) {
 	return
 }
 
-func (g *Group) localSet(key string, value []byte, expire time.Time, cache *cache) {
+func (g *Group) localSet(key string, value []byte, expire int64, cache *cache) {
 	if g.cacheBytes <= 0 {
 		return
 	}
@@ -642,6 +641,7 @@ func (g *Group) CacheStats(which CacheType) CacheStats {
 type cache struct {
 	mu         sync.RWMutex
 	nbytes     int64 // of all keys and values
+	timer      timer.Timer
 	lru        *lru.Cache
 	nhit, nget int64
 	nevict     int64 // number of evictions
@@ -663,12 +663,11 @@ func (c *cache) add(key string, value ByteView) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.lru == nil {
-		c.lru = &lru.Cache{
-			OnEvicted: func(key lru.Key, value interface{}) {
-				val := value.(ByteView)
-				c.nbytes -= int64(len(key.(string))) + int64(val.Len())
-				c.nevict++
-			},
+		c.lru = lru.New(0, c.timer)
+		c.lru.OnEvicted = func(key lru.Key, value interface{}) {
+			val := value.(ByteView)
+			c.nbytes -= int64(len(key.(string))) + int64(val.Len())
+			c.nevict++
 		}
 	}
 	c.lru.Add(key, value, value.Expire())

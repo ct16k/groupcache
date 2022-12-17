@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mailgun/groupcache/v2"
+	"github.com/mailgun/groupcache/v2/timer"
 )
 
 func ExampleUsage() {
@@ -48,12 +49,12 @@ func ExampleUsage() {
 			}
 
 			// Set the user in the groupcache to expire after 5 minutes
-			if err := dest.SetProto(&user, time.Now().Add(time.Minute*5)); err != nil {
+			if err := dest.SetProto(&user, time.Now().Add(time.Minute*5).UnixNano()); err != nil {
 				return err
 			}
 			return nil
 		},
-	))
+	), timer.Default{})
 
 	var user User
 

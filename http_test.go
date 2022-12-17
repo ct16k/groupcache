@@ -33,6 +33,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/mailgun/groupcache/v2/timer"
 )
 
 var (
@@ -106,7 +108,7 @@ func TestHTTPPool(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	g := NewGroup("httpPoolTest", 1<<20, getter)
+	g := NewGroup("httpPoolTest", 1<<20, getter, timer.Default{})
 
 	for _, key := range testKeys(nGets) {
 		var value string
@@ -157,7 +159,7 @@ func TestHTTPPool(t *testing.T) {
 	key = "setMyTestKey"
 	setValue := []byte("test set")
 	// Add the key to the cache, optionally updating our local hot cache
-	if err := g.Set(ctx, key, setValue, time.Time{}, false); err != nil {
+	if err := g.Set(ctx, key, setValue, 0, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -204,10 +206,10 @@ func beChildForTestHTTPPool(t *testing.T) {
 			t.Logf("HTTP request from getter failed with '%s'", err)
 		}
 
-		dest.SetString(strconv.Itoa(*peerIndex)+":"+key, time.Time{})
+		dest.SetString(strconv.Itoa(*peerIndex)+":"+key, 0)
 		return nil
 	})
-	NewGroup("httpPoolTest", 1<<20, getter)
+	NewGroup("httpPoolTest", 1<<20, getter, timer.Default{})
 
 	log.Fatal(http.ListenAndServe(addrs[*peerIndex], p))
 }
