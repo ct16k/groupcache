@@ -33,6 +33,7 @@ import (
 
 	pb "github.com/mailgun/groupcache/v2/groupcachepb"
 	"github.com/mailgun/groupcache/v2/testpb"
+	"github.com/mailgun/groupcache/v2/timer"
 )
 
 var (
@@ -64,7 +65,7 @@ func testSetup() {
 			key = <-stringc
 		}
 		cacheFills.Add(1)
-		return dest.SetString("ECHO:"+key, time.Time{})
+		return dest.SetString("ECHO:"+key, 0)
 	}))
 
 	protoGroup = NewGroup(protoGroupName, cacheSize, GetterFunc(func(_ context.Context, key string, dest Sink) error {
@@ -75,12 +76,12 @@ func testSetup() {
 		return dest.SetProto(&testpb.TestMessage{
 			Name: proto.String("ECHO:" + key),
 			City: proto.String("SOME-CITY"),
-		}, time.Time{})
+		}, 0)
 	}))
 
 	expireGroup = NewGroup(expireGroupName, cacheSize, GetterFunc(func(_ context.Context, key string, dest Sink) error {
 		cacheFills.Add(1)
-		return dest.SetString("ECHO:"+key, time.Now().Add(time.Millisecond*100))
+		return dest.SetString("ECHO:"+key, time.Now().Add(time.Millisecond*100).UnixNano())
 	}))
 }
 
@@ -361,9 +362,9 @@ func TestPeers(t *testing.T) {
 	localHits := 0
 	getter := func(_ context.Context, key string, dest Sink) error {
 		localHits++
-		return dest.SetString("got:"+key, time.Time{})
+		return dest.SetString("got:"+key, 0)
 	}
-	testGroup := newGroup("TestPeers-group", cacheSize, GetterFunc(getter), peerList)
+	testGroup := newGroup("TestPeers-group", cacheSize, GetterFunc(getter), peerList, timer.Default)
 	run := func(name string, n int, wantSummary string) {
 		// Reset counters
 		localHits = 0
@@ -445,7 +446,7 @@ func TestAllocatingByteSliceTarget(t *testing.T) {
 	sink := AllocatingByteSliceSink(&dst)
 
 	inBytes := []byte("some bytes")
-	sink.SetBytes(inBytes, time.Time{})
+	sink.SetBytes(inBytes, 0)
 	if want := "some bytes"; string(dst) != want {
 		t.Errorf("SetBytes resulted in %q; want %q", dst, want)
 	}
@@ -492,8 +493,8 @@ func TestNoDedup(t *testing.T) {
 	const testkey = "testkey"
 	const testval = "testval"
 	g := newGroup("testgroup", 1024, GetterFunc(func(_ context.Context, key string, dest Sink) error {
-		return dest.SetString(testval, time.Time{})
-	}), nil)
+		return dest.SetString(testval, 0)
+	}), nil, timer.Default)
 
 	orderedGroup := &orderedFlightGroup{
 		stage1: make(chan bool),
@@ -573,9 +574,9 @@ func TestContextDeadlineOnPeer(t *testing.T) {
 	peer2 := &slowPeer{}
 	peerList := fakePeers([]ProtoGetter{peer0, peer1, peer2, nil})
 	getter := func(_ context.Context, key string, dest Sink) error {
-		return dest.SetString("got:"+key, time.Time{})
+		return dest.SetString("got:"+key, 0)
 	}
-	testGroup := newGroup("TestContextDeadlineOnPeer-group", cacheSize, GetterFunc(getter), peerList)
+	testGroup := newGroup("TestContextDeadlineOnPeer-group", cacheSize, GetterFunc(getter), peerList, timer.Default)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*300)
 	defer cancel()

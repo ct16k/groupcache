@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/mailgun/groupcache/v2/timer"
 )
 
 type simpleStruct struct {
@@ -42,20 +44,24 @@ var getTests = []struct {
 	{"string_miss", "myKey", "nonsense", false},
 	{"simple_struct_hit", simpleStruct{1, "two"}, simpleStruct{1, "two"}, true},
 	{"simple_struct_miss", simpleStruct{1, "two"}, simpleStruct{0, "noway"}, false},
-	{"complex_struct_hit", complexStruct{1, simpleStruct{2, "three"}},
-		complexStruct{1, simpleStruct{2, "three"}}, true},
+	{
+		"complex_struct_hit",
+		complexStruct{1, simpleStruct{2, "three"}},
+		complexStruct{1, simpleStruct{2, "three"}},
+		true,
+	},
 }
 
 func TestAdd_evictsOldAndReplaces(t *testing.T) {
 	var evictedKey Key
 	var evictedValue interface{}
-	lru := New(0)
+	lru := New(0, timer.Default)
 	lru.OnEvicted = func(key Key, value interface{}) {
 		evictedKey = key
 		evictedValue = value
 	}
-	lru.Add("myKey", 1234, time.Time{})
-	lru.Add("myKey", 1235, time.Time{})
+	lru.Add("myKey", 1234, 0)
+	lru.Add("myKey", 1235, 0)
 
 	newVal, ok := lru.Get("myKey")
 	if !ok {
@@ -74,8 +80,8 @@ func TestAdd_evictsOldAndReplaces(t *testing.T) {
 
 func TestGet(t *testing.T) {
 	for _, tt := range getTests {
-		lru := New(0)
-		lru.Add(tt.keyToAdd, 1234, time.Time{})
+		lru := New(0, timer.Default)
+		lru.Add(tt.keyToAdd, 1234, 0)
 		val, ok := lru.Get(tt.keyToGet)
 		if ok != tt.expectedOk {
 			t.Fatalf("%s: cache hit = %v; want %v", tt.name, ok, !ok)
@@ -86,8 +92,8 @@ func TestGet(t *testing.T) {
 }
 
 func TestRemove(t *testing.T) {
-	lru := New(0)
-	lru.Add("myKey", 1234, time.Time{})
+	lru := New(0, timer.Default)
+	lru.Add("myKey", 1234, 0)
 	if val, ok := lru.Get("myKey"); !ok {
 		t.Fatal("TestRemove returned no match")
 	} else if val != 1234 {
@@ -106,10 +112,10 @@ func TestEvict(t *testing.T) {
 		evictedKeys = append(evictedKeys, key)
 	}
 
-	lru := New(20)
+	lru := New(20, timer.Default)
 	lru.OnEvicted = onEvictedFun
 	for i := 0; i < 22; i++ {
-		lru.Add(fmt.Sprintf("myKey%d", i), 1234, time.Time{})
+		lru.Add(fmt.Sprintf("myKey%d", i), 1234, 0)
 	}
 
 	if len(evictedKeys) != 2 {
@@ -124,7 +130,7 @@ func TestEvict(t *testing.T) {
 }
 
 func TestExpire(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		name       string
 		key        interface{}
 		expectedOk bool
@@ -136,8 +142,8 @@ func TestExpire(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		lru := New(0)
-		lru.Add(tt.key, 1234, time.Now().Add(tt.expire))
+		lru := New(0, timer.Default)
+		lru.Add(tt.key, 1234, time.Now().Add(tt.expire).UnixNano())
 		time.Sleep(tt.wait)
 		val, ok := lru.Get(tt.key)
 		if ok != tt.expectedOk {

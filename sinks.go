@@ -18,16 +18,17 @@ package groupcache
 
 import (
 	"errors"
-	"time"
 
 	"github.com/golang/protobuf/proto"
 )
 
-var _ Sink = &stringSink{}
-var _ Sink = &allocBytesSink{}
-var _ Sink = &protoSink{}
-var _ Sink = &truncBytesSink{}
-var _ Sink = &byteViewSink{}
+var (
+	_ Sink = &stringSink{}
+	_ Sink = &allocBytesSink{}
+	_ Sink = &protoSink{}
+	_ Sink = &truncBytesSink{}
+	_ Sink = &byteViewSink{}
+)
 
 // A Sink receives data from a Get call.
 //
@@ -35,19 +36,18 @@ var _ Sink = &byteViewSink{}
 // on success.
 //
 // `e` sets an optional time in the future when the value will expire.
-// If you don't want expiration, pass the zero value for
-// `time.Time` (for instance, `time.Time{}`).
+// If you don't want expiration, pass the zero value.
 type Sink interface {
 	// SetString sets the value to s.
-	SetString(s string, e time.Time) error
+	SetString(s string, e int64) error
 
 	// SetBytes sets the value to the contents of v.
 	// The caller retains ownership of v.
-	SetBytes(v []byte, e time.Time) error
+	SetBytes(v []byte, e int64) error
 
 	// SetProto sets the value to the encoded version of m.
 	// The caller retains ownership of m.
-	SetProto(m proto.Message, e time.Time) error
+	SetProto(m proto.Message, e int64) error
 
 	// view returns a frozen view of the bytes for caching.
 	view() (ByteView, error)
@@ -92,7 +92,7 @@ func (s *stringSink) view() (ByteView, error) {
 	return s.v, nil
 }
 
-func (s *stringSink) SetString(v string, e time.Time) error {
+func (s *stringSink) SetString(v string, e int64) error {
 	s.v.b = nil
 	s.v.s = v
 	*s.sp = v
@@ -100,11 +100,11 @@ func (s *stringSink) SetString(v string, e time.Time) error {
 	return nil
 }
 
-func (s *stringSink) SetBytes(v []byte, e time.Time) error {
+func (s *stringSink) SetBytes(v []byte, e int64) error {
 	return s.SetString(string(v), e)
 }
 
-func (s *stringSink) SetProto(m proto.Message, e time.Time) error {
+func (s *stringSink) SetProto(m proto.Message, e int64) error {
 	b, err := proto.Marshal(m)
 	if err != nil {
 		return err
@@ -145,7 +145,7 @@ func (s *byteViewSink) view() (ByteView, error) {
 	return *s.dst, nil
 }
 
-func (s *byteViewSink) SetProto(m proto.Message, e time.Time) error {
+func (s *byteViewSink) SetProto(m proto.Message, e int64) error {
 	b, err := proto.Marshal(m)
 	if err != nil {
 		return err
@@ -154,12 +154,12 @@ func (s *byteViewSink) SetProto(m proto.Message, e time.Time) error {
 	return nil
 }
 
-func (s *byteViewSink) SetBytes(b []byte, e time.Time) error {
+func (s *byteViewSink) SetBytes(b []byte, e int64) error {
 	*s.dst = ByteView{b: cloneBytes(b), e: e}
 	return nil
 }
 
-func (s *byteViewSink) SetString(v string, e time.Time) error {
+func (s *byteViewSink) SetString(v string, e int64) error {
 	*s.dst = ByteView{s: v, e: e}
 	return nil
 }
@@ -182,7 +182,7 @@ func (s *protoSink) view() (ByteView, error) {
 	return s.v, nil
 }
 
-func (s *protoSink) SetBytes(b []byte, e time.Time) error {
+func (s *protoSink) SetBytes(b []byte, e int64) error {
 	err := proto.Unmarshal(b, s.dst)
 	if err != nil {
 		return err
@@ -193,7 +193,7 @@ func (s *protoSink) SetBytes(b []byte, e time.Time) error {
 	return nil
 }
 
-func (s *protoSink) SetString(v string, e time.Time) error {
+func (s *protoSink) SetString(v string, e int64) error {
 	b := []byte(v)
 	err := proto.Unmarshal(b, s.dst)
 	if err != nil {
@@ -205,7 +205,7 @@ func (s *protoSink) SetString(v string, e time.Time) error {
 	return nil
 }
 
-func (s *protoSink) SetProto(m proto.Message, e time.Time) error {
+func (s *protoSink) SetProto(m proto.Message, e int64) error {
 	b, err := proto.Marshal(m)
 	if err != nil {
 		return err
@@ -250,7 +250,7 @@ func (s *allocBytesSink) setView(v ByteView) error {
 	return nil
 }
 
-func (s *allocBytesSink) SetProto(m proto.Message, e time.Time) error {
+func (s *allocBytesSink) SetProto(m proto.Message, e int64) error {
 	b, err := proto.Marshal(m)
 	if err != nil {
 		return err
@@ -258,11 +258,11 @@ func (s *allocBytesSink) SetProto(m proto.Message, e time.Time) error {
 	return s.setBytesOwned(b, e)
 }
 
-func (s *allocBytesSink) SetBytes(b []byte, e time.Time) error {
+func (s *allocBytesSink) SetBytes(b []byte, e int64) error {
 	return s.setBytesOwned(cloneBytes(b), e)
 }
 
-func (s *allocBytesSink) setBytesOwned(b []byte, e time.Time) error {
+func (s *allocBytesSink) setBytesOwned(b []byte, e int64) error {
 	if s.dst == nil {
 		return errors.New("nil AllocatingByteSliceSink *[]byte dst")
 	}
@@ -273,7 +273,7 @@ func (s *allocBytesSink) setBytesOwned(b []byte, e time.Time) error {
 	return nil
 }
 
-func (s *allocBytesSink) SetString(v string, e time.Time) error {
+func (s *allocBytesSink) SetString(v string, e int64) error {
 	if s.dst == nil {
 		return errors.New("nil AllocatingByteSliceSink *[]byte dst")
 	}
@@ -301,7 +301,7 @@ func (s *truncBytesSink) view() (ByteView, error) {
 	return s.v, nil
 }
 
-func (s *truncBytesSink) SetProto(m proto.Message, e time.Time) error {
+func (s *truncBytesSink) SetProto(m proto.Message, e int64) error {
 	b, err := proto.Marshal(m)
 	if err != nil {
 		return err
@@ -309,11 +309,11 @@ func (s *truncBytesSink) SetProto(m proto.Message, e time.Time) error {
 	return s.setBytesOwned(b, e)
 }
 
-func (s *truncBytesSink) SetBytes(b []byte, e time.Time) error {
+func (s *truncBytesSink) SetBytes(b []byte, e int64) error {
 	return s.setBytesOwned(cloneBytes(b), e)
 }
 
-func (s *truncBytesSink) setBytesOwned(b []byte, e time.Time) error {
+func (s *truncBytesSink) setBytesOwned(b []byte, e int64) error {
 	if s.dst == nil {
 		return errors.New("nil TruncatingByteSliceSink *[]byte dst")
 	}
@@ -327,7 +327,7 @@ func (s *truncBytesSink) setBytesOwned(b []byte, e time.Time) error {
 	return nil
 }
 
-func (s *truncBytesSink) SetString(v string, e time.Time) error {
+func (s *truncBytesSink) SetString(v string, e int64) error {
 	if s.dst == nil {
 		return errors.New("nil TruncatingByteSliceSink *[]byte dst")
 	}

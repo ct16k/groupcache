@@ -19,7 +19,8 @@ package lru
 
 import (
 	"container/list"
-	"time"
+
+	"github.com/mailgun/groupcache/v2/timer"
 )
 
 // Cache is an LRU cache. It is not safe for concurrent access.
@@ -34,6 +35,7 @@ type Cache struct {
 
 	ll    *list.List
 	cache map[interface{}]*list.Element
+	timer timer.Timer
 }
 
 // A Key may be any value that is comparable. See http://golang.org/ref/spec#Comparison_operators
@@ -42,22 +44,23 @@ type Key interface{}
 type entry struct {
 	key    Key
 	value  interface{}
-	expire time.Time
+	expire int64
 }
 
 // New creates a new Cache.
 // If maxEntries is zero, the cache has no limit and it's assumed
 // that eviction is done by the caller.
-func New(maxEntries int) *Cache {
+func New(maxEntries int, timer timer.Timer) *Cache {
 	return &Cache{
 		MaxEntries: maxEntries,
 		ll:         list.New(),
 		cache:      make(map[interface{}]*list.Element),
+		timer:      timer,
 	}
 }
 
 // Add adds a value to the cache.
-func (c *Cache) Add(key Key, value interface{}, expire time.Time) {
+func (c *Cache) Add(key Key, value interface{}, expire int64) {
 	if c.cache == nil {
 		c.cache = make(map[interface{}]*list.Element)
 		c.ll = list.New()
@@ -86,7 +89,7 @@ func (c *Cache) Get(key Key) (value interface{}, ok bool) {
 	if ele, hit := c.cache[key]; hit {
 		entry := ele.Value.(*entry)
 		// If the entry has expired, remove it from the cache
-		if !entry.expire.IsZero() && entry.expire.Before(time.Now()) {
+		if (entry.expire != 0) && (entry.expire < c.timer.Now()) {
 			c.removeElement(ele)
 			return nil, false
 		}
