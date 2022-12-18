@@ -28,9 +28,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/mailgun/groupcache/v2/consistenthash"
 	pb "github.com/mailgun/groupcache/v2/groupcachepb"
+	"google.golang.org/protobuf/proto"
 )
 
 const defaultBasePath = "/_groupcache/"
@@ -212,11 +212,11 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var expire time.Time
-		if out.Expire != nil && *out.Expire != 0 {
-			expire = time.Unix(*out.Expire/int64(time.Second), *out.Expire%int64(time.Second))
+		if out.Expire != 0 {
+			expire = time.Unix(out.Expire/int64(time.Second), out.Expire%int64(time.Second))
 		}
 
-		group.localSet(*out.Key, out.Value, expire, &group.mainCache)
+		group.localSet(out.Key, out.Value, expire, &group.mainCache)
 		return
 	}
 
@@ -240,7 +240,7 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Write the value to the response body as a proto message.
-	body, err := proto.Marshal(&pb.GetResponse{Value: b, Expire: &expireNano})
+	body, err := proto.Marshal(&pb.GetResponse{Value: b, Expire: expireNano})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

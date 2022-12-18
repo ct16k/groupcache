@@ -20,14 +20,16 @@ import (
 	"errors"
 	"time"
 
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 )
 
-var _ Sink = &stringSink{}
-var _ Sink = &allocBytesSink{}
-var _ Sink = &protoSink{}
-var _ Sink = &truncBytesSink{}
-var _ Sink = &byteViewSink{}
+var (
+	_ Sink = &stringSink{}
+	_ Sink = &allocBytesSink{}
+	_ Sink = &protoSink{}
+	_ Sink = &truncBytesSink{}
+	_ Sink = &byteViewSink{}
+)
 
 // A Sink receives data from a Get call.
 //
