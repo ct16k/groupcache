@@ -16,7 +16,7 @@ limitations under the License.
 
 syntax = "proto3";
 
-option go_package = "github.com/mailgun/groupcache/groupcachepb";
+option go_package = "github.com/mailgun/groupcache/v2/groupcachepb";
 
 package groupcachepb;
 
