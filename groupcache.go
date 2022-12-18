@@ -478,8 +478,8 @@ func (g *Group) getLocally(ctx context.Context, key string, dest Sink) (ByteView
 
 func (g *Group) getFromPeer(ctx context.Context, peer ProtoGetter, key string) (ByteView, error) {
 	req := &pb.GetRequest{
-		Group: &g.name,
-		Key:   &key,
+		Group: g.name,
+		Key:   key,
 	}
 	res := &pb.GetResponse{}
 	err := peer.Get(ctx, req, res)
@@ -488,8 +488,8 @@ func (g *Group) getFromPeer(ctx context.Context, peer ProtoGetter, key string) (
 	}
 
 	var expire time.Time
-	if res.Expire != nil && *res.Expire != 0 {
-		expire = time.Unix(*res.Expire/int64(time.Second), *res.Expire%int64(time.Second))
+	if res.Expire != 0 {
+		expire = time.Unix(res.Expire/int64(time.Second), res.Expire%int64(time.Second))
 		if time.Now().After(expire) {
 			return ByteView{}, errors.New("peer returned expired value")
 		}
@@ -508,9 +508,9 @@ func (g *Group) setFromPeer(ctx context.Context, peer ProtoGetter, k string, v [
 		expire = e.UnixNano()
 	}
 	req := &pb.SetRequest{
-		Expire: &expire,
-		Group:  &g.name,
-		Key:    &k,
+		Expire: expire,
+		Group:  g.name,
+		Key:    k,
 		Value:  v,
 	}
 	return peer.Set(ctx, req)
@@ -518,15 +518,15 @@ func (g *Group) setFromPeer(ctx context.Context, peer ProtoGetter, k string, v [
 
 func (g *Group) removeFromPeer(ctx context.Context, peer ProtoGetter, key string) error {
 	req := &pb.GetRequest{
-		Group: &g.name,
-		Key:   &key,
+		Group: g.name,
+		Key:   key,
 	}
 	return peer.Remove(ctx, req)
 }
 
 func (g *Group) clearFromPeer(ctx context.Context, peer ProtoGetter) error {
 	req := &pb.GetRequest{
-		Group: &g.name,
+		Group: g.name,
 	}
 	return peer.Clear(ctx, req)
 }

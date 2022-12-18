@@ -1,10 +1,11 @@
 module github.com/mailgun/groupcache/v2
 
+go 1.19
+
 require (
-	github.com/golang/protobuf v1.3.1
 	github.com/segmentio/fasthash v1.0.3
-	github.com/sirupsen/logrus v1.6.0
-	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a // indirect
+	github.com/sirupsen/logrus v1.9.0
+	google.golang.org/protobuf v1.28.1
 )
 
-go 1.15
+require golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 // indirect
